@@ -1,6 +1,8 @@
 import configparser
 import ssl
+import time
 from aiohttp import web
+from threading import Thread
 
 print('It`s me, Pepaka III')
 
@@ -20,15 +22,23 @@ except LookupError:
 
 
 class Webhook:
-    async def start(request):
-
-        response = await request.text()
-        print('------------------------------------')
-        print(response)
+    async def start(self):
+        response = await self.text()
+        i = 0
+        th = Thread(target=(Handler.start_handler(self, response)), args=i)
+        th.start()
+        i = i + 1
         return web.Response()
-
     app = web.Application()
     app.add_routes([web.post('/', start), web.post('/{name}', start)])
+
+
+class Handler:
+    def start_handler(self, response):
+        print('------------------------------------')
+        print('Hello fucking multi-threaded world!')
+        time.sleep(5)
+        print(response)
 
 
 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
