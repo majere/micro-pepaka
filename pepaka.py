@@ -24,20 +24,18 @@ except LookupError:
 class Webhook:
     async def start(self):
         response = await self.text()
-        i = 0
-        th = Thread(target=(Handler.start_handler(self, response)), args=i)
+        th = Thread(target=Handler.start_handler, args=(response, ))
         th.start()
-        i = i + 1
         return web.Response()
     app = web.Application()
     app.add_routes([web.post('/', start), web.post('/{name}', start)])
 
 
 class Handler:
-    def start_handler(self, response):
+    def start_handler(response):
         print('------------------------------------')
         print('Hello fucking multi-threaded world!')
-        time.sleep(5)
+        time.sleep(3)
         print(response)
 
 
