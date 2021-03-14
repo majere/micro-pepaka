@@ -1,6 +1,7 @@
 import configparser
 import ssl
 import time
+import json
 from aiohttp import web
 from threading import Thread
 
@@ -34,9 +35,8 @@ class Webhook:
 class Handler:
     def start_handler(response):
         print('------------------------------------')
-        print('Hello fucking multi-threaded world!')
-        time.sleep(3)
-        print(response)
+        message = json.loads(response)
+        print(message)
 
 
 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
