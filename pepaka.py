@@ -5,6 +5,7 @@ import json
 import psycopg2
 import requests
 import random
+import string
 from aiohttp import web
 from threading import Thread
 
@@ -58,10 +59,17 @@ class Handler:
             print(message)
 
 
+class RandomGenerator:
+    def genString(length):
+        password_characters = string.ascii_letters + string.digits
+        password = ''.join(random.choice(password_characters) for i in range(length))
+        return password
+
+
 class DB:
     def check_tables():
         cursor = connection.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS admins (id SERIAL NOT NULL, "user_id" bigint NOT NULL, "role" varchar NOT NULL);')
+        cursor.execute('CREATE TABLE IF NOT EXISTS admins (id SERIAL NOT NULL, "user_id" bigint NOT NULL, "role" varchar NOT NULL, "token" varchar NOT NULL);')
         connection.commit()
         cursor.execute('SELECT role FROM admins WHERE user_id = %s AND role = %s;', (int(config['default']['owner_id']), 'owner'))
         answer = cursor.fetchall()
@@ -69,7 +77,7 @@ class DB:
             print('answer true')
         else:
             print('answer false')
-            cursor.execute('INSERT INTO admins ("user_id", role) VALUES (%s, %s);', (config['default']['owner_id'], 'owner'))
+            cursor.execute('INSERT INTO admins ("user_id", role, token) VALUES (%s, %s, %s);', (config['default']['owner_id'], 'owner', RandomGenerator.genString(64)))
             connection.commit()
 
     def check_user(user_id):
@@ -89,13 +97,14 @@ class DB:
 
     def add_admin(user_id):
         cursor = connection.cursor()
-        cursor.execute('INSERT INTO admins ("user_id", role) VALUES (%s, %s);', (user_id, 'admin'))
+        cursor.execute('INSERT INTO admins ("user_id", role, token) VALUES (%s, %s, %s);', (user_id, 'admin', RandomGenerator.genString(64)))
         connection.commit()
 
     def delete_admin(user_id):
         cursor = connection.cursor()
         cursor.execute('DELETE FROM admins WHERE "user_id" = %s;', (user_id,))
         connection.commit()
+
 
 class Message:
     message_id = None
@@ -182,27 +191,27 @@ class PepakaCore:
 
 
 class Admins:
-    def add_admin(message):
-        if DB.check_user(message.user_id) == 'owner':
-            if message.reply_user_id:
-                if DB.check_user(message.reply_user_id):
-                    Methods.sendReply(message.chat_id, message.message_id, 'Ужо есть такой')
+    def add_admin(m):
+        if DB.check_user(m.user_id) == 'owner':
+            if m.reply_user_id:
+                if DB.check_user(m.reply_user_id):
+                    Methods.sendReply(m.chat_id, m.message_id, 'Ужо есть такой')
                 else:
-                    DB.add_admin(message.reply_user_id)
-                    Methods.deleteMessage(message.chat_id, message.message_id)
-                    text = message.user_fullname + ' теперь почётный одмин'
-                    Methods.sendMessage(message.chat_id, text)
+                    DB.add_admin(m.reply_user_id)
+                    Methods.deleteMessage(m.chat_id, m.message_id)
+                    text = m.user_fullname + ' теперь почётный одмин'
+                    Methods.sendMessage(m.chat_id, text)
             else:
-                Methods.sendReply(message.chat_id, message.message_id, 'И на кого ты рукой показываешь?')
+                Methods.sendReply(m.chat_id, m.message_id, 'И на кого ты рукой показываешь?')
         else:
-            Methods.deleteMessage(message.chat_id, message.message_id)
-            text = message.user_fullname + ' раскидывается регалиями почем зря'
-            Methods.sendMessage(message.chat_id, text)
+            Methods.deleteMessage(m.chat_id, m.message_id)
+            text = m.user_fullname + ' раскидывается регалиями почем зря'
+            Methods.sendMessage(m.chat_id, text)
 
-    def delete_admin(message):
-        if DB.check_user(message.user_id) == 'owner':
-            if message.reply_user_id:
-                DB.delete_admin(message.reply_user_id)
+    def delete_admin(m):
+        if DB.check_user(m.user_id) == 'owner':
+            if m.reply_user_id:
+                DB.delete_admin(m.reply_user_id)
 
 t_url = config['default']['t_url'] + config['default']['bot_api_token']
 # create connection to DB
