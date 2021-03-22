@@ -70,6 +70,7 @@ class DB:
     def check_tables():
         cursor = connection.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS admins (id SERIAL NOT NULL, "user_id" bigint NOT NULL, "role" varchar NOT NULL, "token" varchar NOT NULL);')
+        cursor.execute('CREATE TABLE IF NOT EXISTS commands (id SERIAL NOT NULL, "command" varchar NOT NULL, "function" varchar NOT NULL, "local" bool NOT NULL, "ip" inet);')
         connection.commit()
         cursor.execute('SELECT role FROM admins WHERE user_id = %s AND role = %s;', (int(config['default']['owner_id']), 'owner'))
         answer = cursor.fetchall()
@@ -105,6 +106,19 @@ class DB:
         cursor.execute('DELETE FROM admins WHERE "user_id" = %s;', (user_id,))
         connection.commit()
 
+    def add_command(command, function, local, ip):
+        cursor = connection.cursor()
+        cursor.execute('INSERT INTO commands (command, function, local, ip) VALUES (%s, %s, %s, %s);', (command, function, local, ip))
+        connection.commit()
+
+    def check_command(command):
+        cursor = connection.cursor()
+        cursor.execute('SELECT command FROM commands WHERE command = %s;', (command,))
+        answer = cursor.fetchall()
+        if answer:
+            return True
+        else:
+            return False
 
 class Message:
     message_id = None
@@ -184,6 +198,8 @@ class PepakaCore:
             Admins.add_admin(m)
         if m.command == '!дел':
             Admins.delete_admin(m)
+        if m.command.startswith('!add'):
+            Admins.add_command(m)
 
     def service(message):
         print('service')
@@ -212,6 +228,26 @@ class Admins:
         if DB.check_user(m.user_id) == 'owner':
             if m.reply_user_id:
                 DB.delete_admin(m.reply_user_id)
+
+    def add_command(m):
+        print('Start Admins.add_command()')
+        if DB.check_user(m.user_id) == 'owner' or DB.check_user(m.user_id) == 'admin':
+            p = m.command.split(' ')
+            DB.check_command(p[1])
+            if len(p) == 5 and p[1].startswith('!'):
+                if DB.check_command(p[1]):
+                    text = 'Команда ' + p[1] + ' уже существует'
+                    Methods.sendMessage(m.chat_id, text)
+                else:
+                    DB.add_command(p[1], p[2], p[3], p[4])
+                    text = 'Команда ' + p[1] + ' добавлена'
+                    Methods.sendMessage(m.chat_id, text)
+            else:
+                Methods.sendReply(m.chat_id, m.message_id, 'Неправильный ввод команды. !add command function local ip')
+        else:
+            print('access is not allowed')
+
+
 
 t_url = config['default']['t_url'] + config['default']['bot_api_token']
 # create connection to DB
