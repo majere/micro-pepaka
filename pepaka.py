@@ -8,27 +8,11 @@ import random
 import string
 from aiohttp import web
 from threading import Thread
-
-print('It`s me, Pepaka III')
-
-config = configparser.ConfigParser()
-
-try:
-    config.read('config.ini')
-    print(config['default']['bot_api_token'])
-    print(config['default']['ssl_fullchain'])
-    print(config['default']['ssl_privkey'])
-    print(config['default']['webhook_listen'])
-    print(config['default']['webhook_port'])
-    print(config['default']['db_ip'])
-    print(config['default']['db_name'])
-    print(config['default']['db_user'])
-    print(config['default']['db_password'])
-    print(config['default']['owner_id'])
-
-except LookupError:
-    print('config.ini error')
-    exit()
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine
+from sqlalchemy.engine.url import URL
 
 
 class Webhook:
@@ -65,7 +49,7 @@ class RandomGenerator:
         password = ''.join(random.choice(password_characters) for i in range(length))
         return password
 
-
+'''
 class DB:
     def check_tables():
         cursor = connection.cursor()
@@ -119,6 +103,8 @@ class DB:
             return True
         else:
             return False
+'''
+
 
 class Message:
     message_id = None
@@ -201,11 +187,19 @@ class PepakaCore:
         if m.command.startswith('!add'):
             Admins.add_command(m)
 
+        s = session()
+        t = Admins(user_id=0000, role='bugaga', token='qqqqqqqqqqqqqqqqqqqqq')
+        s.add(t)
+        s.commit()
+        for admin in s.query(Admins).filter(Admins.id == 1):
+            print(admin.token)
+
+
     def service(message):
         print('service')
         print(message)
 
-
+'''
 class Admins:
     def add_admin(m):
         if DB.check_user(m.user_id) == 'owner':
@@ -246,13 +240,64 @@ class Admins:
                 Methods.sendReply(m.chat_id, m.message_id, 'Неправильный ввод команды. !add command function local ip')
         else:
             print('access is not allowed')
+'''
 
+config = configparser.ConfigParser()
+
+try:
+    config.read('config.ini')
+    print(config['default']['bot_api_token'])
+    print(config['default']['ssl_fullchain'])
+    print(config['default']['ssl_privkey'])
+    print(config['default']['webhook_listen'])
+    print(config['default']['webhook_port'])
+    print(config['default']['db_ip'])
+    print(config['default']['db_port'])
+    print(config['default']['db_name'])
+    print(config['default']['db_user'])
+    print(config['default']['db_password'])
+    print(config['default']['owner_id'])
+
+except LookupError:
+    print('config.ini error')
+    exit()
 
 
 t_url = config['default']['t_url'] + config['default']['bot_api_token']
-# create connection to DB
-connection = psycopg2.connect(dbname=config['default']['db_name'], user=config['default']['db_user'], password=config['default']['db_password'], host=config['default']['db_ip'])
-DB.check_tables()
+
+
+
+
+
+Base = declarative_base()
+
+
+class Admins(Base):
+    __tablename__ = 'admins'
+    id = Column(Integer, primary_key=True)
+    user_id = Column('user_id', Integer)
+    role = Column('role', String)
+    token = Column('token', String)
+
+
+
+db_connect = {
+    'drivername': 'postgresql',
+    'host': config['default']['db_ip'],
+    'port': config['default']['db_port'],
+    'username': config['default']['db_user'],
+    'password': config['default']['db_password'],
+    'database': config['default']['db_name']
+}
+
+engine = create_engine(URL(**db_connect))
+session = sessionmaker()
+session.configure(bind=engine)
+Base.metadata.create_all(engine)
+
+
+# connection = psycopg2.connect(dbname=config['default']['db_name'], user=config['default']['db_user'], password=config['default']['db_password'], host=config['default']['db_ip'])
+# DB.check_tables()
 # start web-server
 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
 ssl_context.load_cert_chain(config['default']['ssl_fullchain'], config['default']['ssl_privkey'])
