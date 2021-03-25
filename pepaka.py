@@ -2,7 +2,7 @@ import configparser
 import ssl
 import time
 import json
-import psycopg2
+#import psycopg2
 import requests
 import random
 import string
@@ -13,6 +13,40 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
+
+
+class Config:
+    t_url = None
+    bot_api_token = None
+    ssl_fullchain = None
+    ssl_privkey = None
+    webhook_listen = None
+    webhook_port = None
+    db_ip = None
+    db_port = None
+    db_name = None
+    db_user = None
+    db_password = None
+    owner_id = None
+
+    def __init__(self):
+        conf = configparser.ConfigParser()
+        conf.read('config.ini')
+        self.t_url = conf['default']['t_url']
+        self.bot_api_token = conf['default']['bot_api_token']
+        self.ssl_fullchain = conf['default']['ssl_fullchain']
+        self.ssl_privkey = conf['default']['ssl_privkey']
+        self.webhook_listen = conf['default']['webhook_listen']
+        self.webhook_port = conf['default']['webhook_port']
+        self.db_ip = conf['default']['db_ip']
+        self.db_port = conf['default']['db_port']
+        self.db_name = conf['default']['db_name']
+        self.db_user = conf['default']['db_user']
+        self.db_password = conf['default']['db_password']
+        self.owner_id = conf['default']['owner_id']
+
+
+cfg = Config()
 
 
 class Webhook:
@@ -49,61 +83,7 @@ class RandomGenerator:
         password = ''.join(random.choice(password_characters) for i in range(length))
         return password
 
-'''
-class DB:
-    def check_tables():
-        cursor = connection.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS admins (id SERIAL NOT NULL, "user_id" bigint NOT NULL, "role" varchar NOT NULL, "token" varchar NOT NULL);')
-        cursor.execute('CREATE TABLE IF NOT EXISTS commands (id SERIAL NOT NULL, "command" varchar NOT NULL, "function" varchar NOT NULL, "local" bool NOT NULL, "ip" inet);')
-        connection.commit()
-        cursor.execute('SELECT role FROM admins WHERE user_id = %s AND role = %s;', (int(config['default']['owner_id']), 'owner'))
-        answer = cursor.fetchall()
-        if answer:
-            print('answer true')
-        else:
-            print('answer false')
-            cursor.execute('INSERT INTO admins ("user_id", role, token) VALUES (%s, %s, %s);', (config['default']['owner_id'], 'owner', RandomGenerator.genString(64)))
-            connection.commit()
 
-    def check_user(user_id):
-        cursor = connection.cursor()
-        cursor.execute('SELECT role FROM admins WHERE user_id = %s;', (user_id,))
-        answer = cursor.fetchall()
-        print(answer)
-        if answer and answer[0][0] == 'owner':
-            print('it`s owner')
-            return 'owner'
-        elif answer and answer[0][0] == 'admin':
-            print('it`s admin')
-            return 'admin'
-        else:
-            print('it`s noname')
-            return None
-
-    def add_admin(user_id):
-        cursor = connection.cursor()
-        cursor.execute('INSERT INTO admins ("user_id", role, token) VALUES (%s, %s, %s);', (user_id, 'admin', RandomGenerator.genString(64)))
-        connection.commit()
-
-    def delete_admin(user_id):
-        cursor = connection.cursor()
-        cursor.execute('DELETE FROM admins WHERE "user_id" = %s;', (user_id,))
-        connection.commit()
-
-    def add_command(command, function, local, ip):
-        cursor = connection.cursor()
-        cursor.execute('INSERT INTO commands (command, function, local, ip) VALUES (%s, %s, %s, %s);', (command, function, local, ip))
-        connection.commit()
-
-    def check_command(command):
-        cursor = connection.cursor()
-        cursor.execute('SELECT command FROM commands WHERE command = %s;', (command,))
-        answer = cursor.fetchall()
-        if answer:
-            return True
-        else:
-            return False
-'''
 
 
 class Message:
@@ -150,27 +130,32 @@ class Message:
 
 
 class Methods:
-    def sendChatAction(chat_id, action):
-        url = t_url + '/sendChatAction'
+    url = None
+
+    def __init__(self):
+        self.url = cfg.t_url + cfg.bot_api_token
+
+    def sendChatAction(self, chat_id, action):
+        url = self.url + '/sendChatAction'
         data = {'chat_id': chat_id, 'action': action}
         r = requests.post(url, data=data)
         print('send chat action status:', r)
         time.sleep(random.random())
 
-    def sendMessage(chat_id, text):
-        url = t_url + '/sendMessage'
+    def sendMessage(self, chat_id, text):
+        url = self.url + '/sendMessage'
         data = {'chat_id': chat_id, 'parse_mode': 'HTML', 'text': text}
         r = requests.post(url, data=data)
         print('send message status:', r)
 
-    def sendReply(chat_id, message_id, text):
-        url = t_url + '/sendMessage'
+    def sendReply(self, chat_id, message_id, text):
+        url = self.url + '/sendMessage'
         data = {'chat_id': chat_id, 'parse_mode': 'HTML', 'reply_to_message_id': message_id, 'text': text}
         r = requests.post(url, data=data)
         print('send reply status:', r)
 
-    def deleteMessage(chat_id, message_id):
-        url = t_url + '/deleteMessage'
+    def deleteMessage(self, chat_id, message_id):
+        url = self.url + '/deleteMessage'
         data = {'chat_id': chat_id, 'message_id': message_id}
         r = requests.post(url, data=data)
         print('delete message status:', r)
@@ -180,99 +165,73 @@ class PepakaCore:
     def core(message):
         print('core')
         m = Message(message)
+        met = Methods()
+        met.sendMessage(m.chat_id, m.text)
         if m.command == '!адм':
-            Admins.add_admin(m)
+            pass
         if m.command == '!дел':
-            Admins.delete_admin(m)
+            pass
         if m.command.startswith('!add'):
-            Admins.add_command(m)
+            pass
 
-        s = session()
-        t = Admins(user_id=0000, role='bugaga', token='qqqqqqqqqqqqqqqqqqqqq')
-        s.add(t)
-        s.commit()
-        for admin in s.query(Admins).filter(Admins.id == 1):
-            print(admin.token)
+        print(db.check_user(m))
 
 
     def service(message):
         print('service')
         print(message)
 
+
+
 '''
-class Admins:
-    def add_admin(m):
-        if DB.check_user(m.user_id) == 'owner':
-            if m.reply_user_id:
-                if DB.check_user(m.reply_user_id):
-                    Methods.sendReply(m.chat_id, m.message_id, 'Ужо есть такой')
-                else:
-                    DB.add_admin(m.reply_user_id)
-                    Methods.deleteMessage(m.chat_id, m.message_id)
-                    text = m.user_fullname + ' теперь почётный одмин'
-                    Methods.sendMessage(m.chat_id, text)
-            else:
-                Methods.sendReply(m.chat_id, m.message_id, 'И на кого ты рукой показываешь?')
-        else:
-            Methods.deleteMessage(m.chat_id, m.message_id)
-            text = m.user_fullname + ' раскидывается регалиями почем зря'
-            Methods.sendMessage(m.chat_id, text)
-
-    def delete_admin(m):
-        if DB.check_user(m.user_id) == 'owner':
-            if m.reply_user_id:
-                DB.delete_admin(m.reply_user_id)
-
-    def add_command(m):
-        print('Start Admins.add_command()')
-        if DB.check_user(m.user_id) == 'owner' or DB.check_user(m.user_id) == 'admin':
-            p = m.command.split(' ')
-            DB.check_command(p[1])
-            if len(p) == 5 and p[1].startswith('!'):
-                if DB.check_command(p[1]):
-                    text = 'Команда ' + p[1] + ' уже существует'
-                    Methods.sendMessage(m.chat_id, text)
-                else:
-                    DB.add_command(p[1], p[2], p[3], p[4])
-                    text = 'Команда ' + p[1] + ' добавлена'
-                    Methods.sendMessage(m.chat_id, text)
-            else:
-                Methods.sendReply(m.chat_id, m.message_id, 'Неправильный ввод команды. !add command function local ip')
-        else:
-            print('access is not allowed')
+        s = session()
+        t = Admins(user_id=0000, role='bugaga', token='qqqqqqqqqqqqqqqqqqqqq')
+        s.add(t)
+        s.commit()
 '''
 
-config = configparser.ConfigParser()
-
-try:
-    config.read('config.ini')
-    print(config['default']['bot_api_token'])
-    print(config['default']['ssl_fullchain'])
-    print(config['default']['ssl_privkey'])
-    print(config['default']['webhook_listen'])
-    print(config['default']['webhook_port'])
-    print(config['default']['db_ip'])
-    print(config['default']['db_port'])
-    print(config['default']['db_name'])
-    print(config['default']['db_user'])
-    print(config['default']['db_password'])
-    print(config['default']['owner_id'])
-
-except LookupError:
-    print('config.ini error')
-    exit()
-
-
-t_url = config['default']['t_url'] + config['default']['bot_api_token']
 
 
 
+class DB:
+    db_connect = None
+    base = None
+    session = None
+    engine = None
+
+    def __init__(self, conf):
+        self.db_connect = {
+            'drivername': 'postgresql',
+            'host': conf.db_ip,
+            'port': conf.db_port,
+            'username': conf.db_user,
+            'password': conf.db_password,
+            'database': conf.db_name
+        }
+        self.base = declarative_base()
+        self.engine = create_engine(URL(**self.db_connect))
+        self.session = sessionmaker()
+        self.session.configure(bind=self.engine)
+        self.base.metadata.create_all(self.engine)
+
+    def check_user(self, m):
+        mtd = Methods()
+        s = self.session()
+        query = s.query(Admins).filter(Admins.user_id == m.user_id)
+        if query.count() == 1:
+            for elem in query:
+                return elem.role
+        elif query.count() > 1:
+            mtd.sendMessage(m.chat_id, 'Слишком много записей с таким именем')
+        else:
+            mtd.sendMessage(m.chat_id, 'Такого пользователя нет в бд')
+            return False
 
 
-Base = declarative_base()
+db = DB(cfg)
 
 
-class Admins(Base):
+class Admins(db.base):
     __tablename__ = 'admins'
     id = Column(Integer, primary_key=True)
     user_id = Column('user_id', Integer)
@@ -281,25 +240,10 @@ class Admins(Base):
 
 
 
-db_connect = {
-    'drivername': 'postgresql',
-    'host': config['default']['db_ip'],
-    'port': config['default']['db_port'],
-    'username': config['default']['db_user'],
-    'password': config['default']['db_password'],
-    'database': config['default']['db_name']
-}
-
-engine = create_engine(URL(**db_connect))
-session = sessionmaker()
-session.configure(bind=engine)
-Base.metadata.create_all(engine)
 
 
-# connection = psycopg2.connect(dbname=config['default']['db_name'], user=config['default']['db_user'], password=config['default']['db_password'], host=config['default']['db_ip'])
-# DB.check_tables()
 # start web-server
 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-ssl_context.load_cert_chain(config['default']['ssl_fullchain'], config['default']['ssl_privkey'])
+ssl_context.load_cert_chain(cfg.ssl_fullchain, cfg.ssl_privkey)
 webhook = Webhook()
-web.run_app(webhook.app, host=config['default']['webhook_listen'], port=config['default']['webhook_port'], ssl_context=ssl_context)
+web.run_app(webhook.app, host=cfg.webhook_listen, port=cfg.webhook_port, ssl_context=ssl_context)
