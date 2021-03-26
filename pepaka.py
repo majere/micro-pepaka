@@ -10,7 +10,6 @@ from threading import Thread
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 
 
@@ -27,6 +26,7 @@ class Config:
     db_user = None
     db_password = None
     owner_id = None
+    url = None
 
     def __init__(self):
         conf = configparser.ConfigParser()
@@ -91,12 +91,14 @@ class Message:
     user_fullname = None
     chat_id = None
     text = None
+    caption = None
     command = None
     sticker = None
     reply_id = None
     reply_user_id = None
     reply_user_fullname = None
     reply_text = None
+    file_id = None
 
     def __init__(self, data):
         print(data)
@@ -116,7 +118,13 @@ class Message:
             self.text = data['text']
             self.command = self.text.lower()
             print('text =', self.text)
-            print('command =', self.command)
+        if data.get('caption'):
+            self.caption = data['caption']
+            self.command = self.caption.lower()
+            print('caption =', self.caption)
+        if data.get('photo'):
+            self.file_id = data['photo'][0]['file_id']
+            print('file_id =', self.file_id)
         if data.get('sticker'):
             self.sticker = data['sticker']
             print(self.sticker)
@@ -135,7 +143,8 @@ class Methods:
     url = None
 
     def __init__(self):
-        self.url = cfg.t_url + cfg.bot_api_token
+        self.url = cfg.t_url + '/bot' + cfg.bot_api_token
+        print(self.url)
 
     def sendChatAction(self, chat_id, action):
         url = self.url + '/sendChatAction'
@@ -162,23 +171,60 @@ class Methods:
         r = requests.post(url, data=data)
         print('delete message status:', r)
 
+    def getFile(self, id):
+        url = self.url + '/getFile'
+        data = {'file_id': id}
+        r = requests.post(url, data=data)
+        print('getFile = ', r.text)
+        return r
+
 
 class PepakaCore:
     def core(message):
         print('core')
         m = Message(message)
-        if m.command == '!адм':
-            pass
-        if m.command == '!del':
-            db.del_user(m, cfg)
-        if m.command.startswith('!add'):
-            db.add_user(m, cfg)
+        if m.command:
+            if m.command == '!адм':
+                pass
+            if m.command == '!del':
+                db.del_user(m, cfg)
+            if m.command.startswith('!add'):
+                db.add_user(m, cfg)
+            if m.command.startswith('!мем') and m.file_id:
+                f = Files(m)
+                f.download()
+
 
         print(db.check_user_role(m))
 
     def service(message):
         print('service')
         print(message)
+
+
+class Meme:
+    def __init__(self):
+        pass
+
+
+class Files:
+    file_id = None
+
+    def __init__(self, m):
+        self.file_id = m.file_id
+        self.url = cfg.t_url + '/file/bot' + cfg.bot_api_token
+
+    def download(self):
+        mtd = Methods()
+        data = mtd.getFile(self.file_id)
+        jdata = json.loads(data.text)
+        if jdata['ok']:
+            url_file = self.url + '/' + jdata['result']['file_path']
+            file = jdata['result']['file_path']
+            f = open(file, "wb")
+            r = requests.get(url_file)
+            f.write(r.content)
+            f.close()
 
 
 class DB:
@@ -240,11 +286,11 @@ class DB:
                 s.add(t)
                 s.commit()
                 mtd.sendChatAction(m.chat_id, 'typing')
-                text = '<b>%s</b> принят в Котячий дворец' % m.reply_user_fullname
+                text = F'<b>{m.reply_user_fullname}</b> принят в Котячий дворец'
                 mtd.sendMessage(m.chat_id, text)
             else:
                 mtd.sendChatAction(m.chat_id, 'typing')
-                text = '<b>%s</b> уже во дворце' % m.reply_user_fullname
+                text = F'<b>{m.reply_user_fullname}</b> уже во дворце'
                 mtd.sendMessage(m.chat_id, text)
         else:
             print('no rights to add admin')
@@ -257,11 +303,11 @@ class DB:
                 s = self.session()
                 s.query(Admins).filter(Admins.user_id == m.reply_user_id).delete()
                 s.commit()
-                text = 'У <b>%s</b> с позором выгнал из котячей крепости <b>%s</b>' % (m.user_fullname, m.reply_user_fullname)
+                text = F'<b>{m.user_fullname}</b> с позором выгнал из котячей крепости <b>{m.reply_user_fullname}</b>'
                 mtd.sendChatAction(m.chat_id, 'typing')
                 mtd.sendMessage(m.chat_id, text)
             else:
-                text = 'У <b>%s</b> нет прав для удаления <b>%s</b>' % (m.user_fullname, m.reply_user_fullname)
+                text = F'У <b>{m.user_fullname}</b> нет прав для удаления <b>{m.reply_user_fullname}</b>'
                 mtd.sendChatAction(m.chat_id, 'typing')
                 mtd.sendMessage(m.chat_id, text)
         else:
@@ -278,6 +324,15 @@ class Admins(db.base):
     user_id = Column('user_id', Integer)
     role = Column('role', String)
     token = Column('token', String)
+
+
+class Memes(db.base):
+    __tablename__ = 'memes'
+    id = Column(Integer, primary_key=True)
+    command = Column('command', String)
+    chat_id = Column('chat_id', Integer)
+    file = Column('file', String)
+
 
 db.check_owner(cfg)
 # start web-server
