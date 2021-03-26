@@ -2,7 +2,6 @@ import configparser
 import ssl
 import time
 import json
-#import psycopg2
 import requests
 import random
 import string
@@ -43,7 +42,7 @@ class Config:
         self.db_name = conf['default']['db_name']
         self.db_user = conf['default']['db_user']
         self.db_password = conf['default']['db_password']
-        self.owner_id = conf['default']['owner_id']
+        self.owner_id = int(conf['default']['owner_id'])
 
 
 cfg = Config()
@@ -84,8 +83,6 @@ class RandomGenerator:
         return password
 
 
-
-
 class Message:
     message_id = None
     user_id = None
@@ -98,6 +95,7 @@ class Message:
     sticker = None
     reply_id = None
     reply_user_id = None
+    reply_user_fullname = None
     reply_text = None
 
     def __init__(self, data):
@@ -112,7 +110,7 @@ class Message:
         print('first_name =', self.user_firstname)
         try:
             self.user_fullname = self.user_firstname + ' ' + data['from']['last_name']
-        except:
+        except KeyError:
             self.user_fullname = self.user_firstname
         if data.get('text'):
             self.text = data['text']
@@ -127,6 +125,10 @@ class Message:
             print('reply_id =', self.reply_id)
             self.reply_user_id = data['reply_to_message']['from']['id']
             print('reply_user_id =', self.reply_user_id)
+            try:
+                self.reply_user_fullname = data['reply_to_message']['from']['first_name'] + ' ' + data['reply_to_message']['from']['last_name']
+            except KeyError:
+                self.reply_user_fullname = data['reply_to_message']['from']['first_name']
 
 
 class Methods:
@@ -165,32 +167,18 @@ class PepakaCore:
     def core(message):
         print('core')
         m = Message(message)
-        met = Methods()
-        met.sendMessage(m.chat_id, m.text)
         if m.command == '!адм':
             pass
-        if m.command == '!дел':
-            pass
+        if m.command == '!del':
+            db.del_user(m, cfg)
         if m.command.startswith('!add'):
-            pass
+            db.add_user(m, cfg)
 
-        print(db.check_user(m))
-
+        print(db.check_user_role(m))
 
     def service(message):
         print('service')
         print(message)
-
-
-
-'''
-        s = session()
-        t = Admins(user_id=0000, role='bugaga', token='qqqqqqqqqqqqqqqqqqqqq')
-        s.add(t)
-        s.commit()
-'''
-
-
 
 
 class DB:
@@ -212,21 +200,74 @@ class DB:
         self.engine = create_engine(URL(**self.db_connect))
         self.session = sessionmaker()
         self.session.configure(bind=self.engine)
-        self.base.metadata.create_all(self.engine)
 
-    def check_user(self, m):
-        mtd = Methods()
+    def check_user_role(self, m):
         s = self.session()
-        query = s.query(Admins).filter(Admins.user_id == m.user_id)
-        if query.count() == 1:
-            for elem in query:
+        q = s.query(Admins).filter(Admins.user_id == m.user_id)
+        if q.count() == 1:
+            for elem in q:
                 return elem.role
-        elif query.count() > 1:
-            mtd.sendMessage(m.chat_id, 'Слишком много записей с таким именем')
+        elif q.count() > 1:
+            print('Слишком много записей с таким user_id')
+            return False
         else:
-            mtd.sendMessage(m.chat_id, 'Такого пользователя нет в бд')
+            print('Такого user_id нет в бд')
             return False
 
+    def check_owner(self, conf):
+        self.base.metadata.create_all(self.engine)
+        print('START CHECK OWNER')
+        s = self.session()
+        q = s.query(Admins).filter(Admins.user_id == conf.owner_id)
+        if q.count() == 1:
+            print('owner ok')
+        elif q.count() > 1:
+            print('too many owners')
+        else:
+            print('No owner. Create owner')
+            t = Admins(user_id=conf.owner_id, role='owner', token=RandomGenerator.genString(64))
+            s.add(t)
+            s.commit()
+
+    def add_user(self, m, conf):
+        print('START ADD USER TO ADMINS')
+        if conf.owner_id == m.user_id and m.reply_user_id:
+            mtd = Methods()
+            s = self.session()
+            q = s.query(Admins).filter(Admins.user_id == m.reply_user_id)
+            if q.count() == 0:
+                t = Admins(user_id=m.reply_user_id, role='admin', token=RandomGenerator.genString(64))
+                s.add(t)
+                s.commit()
+                mtd.sendChatAction(m.chat_id, 'typing')
+                text = '<b>%s</b> принят в Котячий дворец' % m.reply_user_fullname
+                mtd.sendMessage(m.chat_id, text)
+            else:
+                mtd.sendChatAction(m.chat_id, 'typing')
+                text = '<b>%s</b> уже во дворце' % m.reply_user_fullname
+                mtd.sendMessage(m.chat_id, text)
+        else:
+            print('no rights to add admin')
+
+    def del_user(self, m, conf):
+        print('START DELETE USER')
+        mtd = Methods()
+        if m.reply_user_fullname:
+            if conf.owner_id == m.user_id and m.reply_user_id and m.reply_user_id != conf.owner_id:
+                s = self.session()
+                s.query(Admins).filter(Admins.user_id == m.reply_user_id).delete()
+                s.commit()
+                text = 'У <b>%s</b> с позором выгнал из котячей крепости <b>%s</b>' % (m.user_fullname, m.reply_user_fullname)
+                mtd.sendChatAction(m.chat_id, 'typing')
+                mtd.sendMessage(m.chat_id, text)
+            else:
+                text = 'У <b>%s</b> нет прав для удаления <b>%s</b>' % (m.user_fullname, m.reply_user_fullname)
+                mtd.sendChatAction(m.chat_id, 'typing')
+                mtd.sendMessage(m.chat_id, text)
+        else:
+            text = 'Пустота вечна. Её нельзя удалить'
+            mtd.sendChatAction(m.chat_id, 'typing')
+            mtd.sendMessage(m.chat_id, text)
 
 db = DB(cfg)
 
@@ -238,10 +279,7 @@ class Admins(db.base):
     role = Column('role', String)
     token = Column('token', String)
 
-
-
-
-
+db.check_owner(cfg)
 # start web-server
 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
 ssl_context.load_cert_chain(cfg.ssl_fullchain, cfg.ssl_privkey)
