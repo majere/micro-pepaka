@@ -99,6 +99,7 @@ class Message:
     reply_user_fullname = None
     reply_text = None
     file_id = None
+    file_path = None
 
     def __init__(self, data):
         print(data)
@@ -183,19 +184,19 @@ class PepakaCore:
     def core(message):
         print('core')
         m = Message(message)
+        is_command = True
         if m.command:
-            if m.command == '!адм':
-                pass
+            if m.command == '!адм' and is_command:
+                is_command = False
             if m.command == '!del':
                 db.del_user(m, cfg)
             if m.command.startswith('!add'):
                 db.add_user(m, cfg)
             if m.command.startswith('!мем') and m.file_id:
-                f = Files(m)
-                f.download()
+                mem = Meme()
+                mem.check_meme(m)
 
 
-        print(db.check_user_role(m))
 
     def service(message):
         print('service')
@@ -206,25 +207,51 @@ class Meme:
     def __init__(self):
         pass
 
+    def check_meme(self, m):
+        c = m.command.split(' ')
+        mtd = Methods()
+        if len(c) == 2 and c[1].startswith('!'):
+            print('mem ok')
+            m.command = c[1]
+            f = Files()
+            f.download(m)
+            result = db.add_meme(m)
+            if result == 'created':
+                mtd.sendChatAction(m.chat_id, 'typing')
+                mtd.sendMessage(m.chat_id, F'Схоронил мемасик {m.command}')
+            elif result == 'replaced':
+                print('REPLACED')
+            else:
+                print('NORIGHTS')
+        else:
+            mtd.sendChatAction(m.chat_id, 'typing')
+            text = 'Неправильная комнада. !мем !суперкоманда'
+            mtd.sendMessage(m.chat_id, text)
+
 
 class Files:
     file_id = None
+    url = None
 
-    def __init__(self, m):
-        self.file_id = m.file_id
+    def __init__(self):
         self.url = cfg.t_url + '/file/bot' + cfg.bot_api_token
 
-    def download(self):
+    def download(self, m):
         mtd = Methods()
-        data = mtd.getFile(self.file_id)
+        data = mtd.getFile(m.file_id)
         jdata = json.loads(data.text)
         if jdata['ok']:
+            print('DOWNLOAD')
+            m.file_path = jdata['result']['file_path']
             url_file = self.url + '/' + jdata['result']['file_path']
             file = jdata['result']['file_path']
             f = open(file, "wb")
             r = requests.get(url_file)
             f.write(r.content)
             f.close()
+        else:
+            text = 'getFile failed'
+            mtd.sendMessage(m.chat_id, text)
 
 
 class DB:
@@ -315,6 +342,28 @@ class DB:
             mtd.sendChatAction(m.chat_id, 'typing')
             mtd.sendMessage(m.chat_id, text)
 
+    def add_meme(self, m):
+        s = self.session()
+        query = s.query(Memes).filter(Memes.chat_id == m.chat_id, Memes.command == m.command)
+        if query.count() == 0:
+            t = Memes(owner=m.user_id, chat_id=m.chat_id, command=m.command, file=m.file_path)
+            s.add(t)
+            s.commit()
+            return 'created'
+        else:
+            if query[0].owner == m.user_id:
+                print('replace meme')
+                query.delete()
+                t = Memes(owner=m.user_id, chat_id=m.chat_id, command=m.command, file=m.file_path)
+                s.add(t)
+                s.commit()
+                return 'replaced'
+            else:
+                print('No rights to replace meme')
+                return 'norights'
+
+
+
 db = DB(cfg)
 
 
@@ -329,8 +378,9 @@ class Admins(db.base):
 class Memes(db.base):
     __tablename__ = 'memes'
     id = Column(Integer, primary_key=True)
-    command = Column('command', String)
+    owner = Column('owner', Integer)
     chat_id = Column('chat_id', Integer)
+    command = Column('command', String)
     file = Column('file', String)
 
 
