@@ -5,6 +5,7 @@ import json
 import requests
 import random
 import string
+import io
 from aiohttp import web
 from threading import Thread
 from sqlalchemy.orm import sessionmaker
@@ -179,6 +180,13 @@ class Methods:
         print('getFile = ', r.text)
         return r
 
+    def sendPhoto(self, chat_id, photo):
+        url = self.url + '/sendPhoto'
+        data = {'chat_id': chat_id}
+        files = {'photo': photo}
+        r = requests.post(url, data=data, files=files)
+        print('sendPhoto =', r.text)
+
 
 class PepakaCore:
     def core(message):
@@ -186,16 +194,20 @@ class PepakaCore:
         m = Message(message)
         is_command = True
         if m.command:
-            if m.command == '!адм' and is_command:
-                is_command = False
             if m.command == '!del':
                 db.del_user(m, cfg)
+                is_command = False
             if m.command.startswith('!add'):
                 db.add_user(m, cfg)
+                is_command = False
             if m.command.startswith('!мем') and m.file_id:
-                mem = Meme()
-                mem.check_meme(m)
+                Meme().save_meme(m)
+                is_command = False
 
+            if m.command.startswith('!') and is_command:
+                if db.get_meme(m):
+                    is_command = False
+                    Meme.send_meme(m)
 
 
     def service(message):
@@ -204,10 +216,8 @@ class PepakaCore:
 
 
 class Meme:
-    def __init__(self):
-        pass
-
-    def check_meme(self, m):
+    @staticmethod
+    def save_meme(m):
         c = m.command.split(' ')
         mtd = Methods()
         if len(c) == 2 and c[1].startswith('!'):
@@ -220,13 +230,21 @@ class Meme:
                 mtd.sendChatAction(m.chat_id, 'typing')
                 mtd.sendMessage(m.chat_id, F'Схоронил мемасик {m.command}')
             elif result == 'replaced':
-                print('REPLACED')
+                mtd.sendChatAction(m.chat_id, 'typing')
+                mtd.sendMessage(m.chat_id, F'Заменил мемасик {m.command}')
             else:
-                print('NORIGHTS')
+                mtd.sendChatAction(m.chat_id, 'typing')
+                mtd.sendMessage(m.chat_id, F'Нет прав на мемасик {m.command}')
         else:
             mtd.sendChatAction(m.chat_id, 'typing')
-            text = 'Неправильная комнада. !мем !суперкоманда'
+            text = 'Неправильная комнада. !мем !имямема'
             mtd.sendMessage(m.chat_id, text)
+
+    @staticmethod
+    def send_meme(m):
+        photo = open(m.file_path, 'rb')
+        mtd = Methods()
+        mtd.sendPhoto(m.chat_id, photo)
 
 
 class Files:
@@ -344,16 +362,16 @@ class DB:
 
     def add_meme(self, m):
         s = self.session()
-        query = s.query(Memes).filter(Memes.chat_id == m.chat_id, Memes.command == m.command)
-        if query.count() == 0:
+        q = s.query(Memes).filter(Memes.chat_id == m.chat_id, Memes.command == m.command)
+        if q.count() == 0:
             t = Memes(owner=m.user_id, chat_id=m.chat_id, command=m.command, file=m.file_path)
             s.add(t)
             s.commit()
             return 'created'
         else:
-            if query[0].owner == m.user_id:
+            if q[0].owner == m.user_id:
                 print('replace meme')
-                query.delete()
+                q.delete()
                 t = Memes(owner=m.user_id, chat_id=m.chat_id, command=m.command, file=m.file_path)
                 s.add(t)
                 s.commit()
@@ -361,6 +379,17 @@ class DB:
             else:
                 print('No rights to replace meme')
                 return 'norights'
+
+    def get_meme(self, m):
+        s = self.session()
+        print('GET MEME', m.command)
+        q = s.query(Memes).filter(Memes.chat_id == m.chat_id, Memes.command == m.command)
+        if q.count() == 1:
+            m.file_path = q[0].file
+            print(m.file_path)
+            return True
+        else:
+            return False
 
 
 
