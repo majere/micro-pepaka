@@ -9,7 +9,7 @@ import string
 from aiohttp import web
 from threading import Thread
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.engine.url import URL
 
@@ -94,7 +94,8 @@ class Message:
     text = None
     caption = None
     command = None
-    sticker = None
+    sticker_set_name = None
+    sticker_id = None
     reply_id = None
     reply_user_id = None
     reply_user_fullname = None
@@ -131,8 +132,9 @@ class Message:
             self.file_id = data['photo'][count - 1]['file_id']
             print('file_id =', self.file_id)
         if data.get('sticker'):
-            self.sticker = data['sticker']
-            print(self.sticker)
+            self.sticker_set_name = data['sticker']['set_name']
+            self.sticker_id = data['sticker']['file_id']
+            print(self.sticker_set_name)
         if data.get('reply_to_message'):
             self.reply_id = data['reply_to_message']['message_id']
             print('reply_id =', self.reply_id)
@@ -191,10 +193,23 @@ class Methods:
         r = requests.post(url, data=data, files=files)
         print('sendPhoto =', r.text)
 
+    def getStickerSet(self, set_name):
+        url = self.url + '/getStickerSet'
+        data = {'name': set_name}
+        r = requests.post(url, data=data)
+        return r
+
+    def sendSticker(self, chat_id, sticker):
+        url = self.url + '/sendSticker'
+        data = {'chat_id': chat_id, 'sticker': sticker}
+        r = requests.post(url, data=data)
+        print(r.text)
+
+
 
 class Actions:
     dict_actions = {}
-    is_command = False
+    # is_command = False
     action = None
 
     def __init__(self, m):
@@ -213,16 +228,29 @@ class Actions:
             return False
 
     def check_db_actions(self, m):
-        print('DB CHECK!', m.command)
+        if db.get_meme(m):
+            mem = Meme()
+            mem.send_meme(m)
+            return True
+        else:
+            print('meme not found')
+            return False
 
 
 class PepakaCore:
     def core(message):
         print('core')
         m = Message(message)
-        a = Actions(m)
-        if not a.check_general_actions(m):
-            a.check_db_actions(m)
+        if m.text:
+            a = Actions(m)
+            if m.command[0] == '!':
+                if not a.check_general_actions(m):
+                    a.check_db_actions(m)
+            else:
+                db.write_msg(m)
+        if m.sticker_set_name:
+            s = Sticker(m)
+            s.check_sticker()
 
 
     def service(message):
@@ -415,6 +443,57 @@ class DB:
         else:
             return False
 
+    def write_msg(self, m):
+        print('def write_msg')
+        s = self.session()
+        q = s.query(Messages).filter(Messages.text == m.text).first()
+        if q:
+            print('exists')
+        else:
+            print('not exists')
+            if not m.text.startswith('!'):
+                t = Messages(text=m.text)
+                s.add(t)
+                s.commit()
+
+
+class Sticker:
+    id = None
+    set_name = None
+    title = None
+    animated = None
+    chat_id = None
+
+    def __init__(self, m):
+        print('Sticker inside!')
+        self.set_name = m.sticker_set_name
+        self.id = m.sticker_id
+
+    def check_sticker(self):
+        print('Check sticker')
+        print(self.set_name)
+        bd = DB(cfg)
+        s = bd.session()
+        q = s.query(Stickers).filter(Stickers.set_name == self.set_name).first()
+        if q:
+            print('est sticker')
+        else:
+            print('net stickera')
+            mtd = Methods()
+            stickers = mtd.getStickerSet(self.set_name)
+            stickers = stickers.json()
+            self.animated = stickers['result']['is_animated']
+            self.title = stickers['result']['title']
+            stickers = stickers['result']['stickers']
+            for stkr in stickers:
+                print(stkr['file_id'])
+                t = Stickers(set_name=self.set_name, title=self.title, sticker_id=stkr['file_id'], is_animated=self.animated)
+                s.add(t)
+            s.commit()
+            mtd.sendSticker(-1001437386963, self.id)
+
+
+
 
 db = DB(cfg)
 
@@ -434,13 +513,23 @@ class Memes(db.base):
     chat_id = Column('chat_id', Integer)
     command = Column('command', String)
     file = Column('file', String)
-
-
-class Commands(db.base):
-    __tablename__ = 'commands'
-    id = Column(Integer, primary_key=True)
-    command = Column('command', String)
     func = Column('func', String)
+
+
+class Messages(db.base):
+    __tablename__ = 'messages'
+    id = Column(Integer, primary_key=True)
+    text = Column('message', String)
+
+
+class Stickers(db.base):
+    __tablename__ = 'stickers'
+    id = Column(Integer, primary_key=True)
+    set_name = Column('set_name', String)
+    title = Column('title', String)
+    sticker_id = Column('sticker_id', String)
+    is_animated = Column('is_animated', Boolean)
+
 
 db.create_tables()
 # start web-server
