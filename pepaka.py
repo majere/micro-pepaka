@@ -6,6 +6,7 @@ import json
 import requests
 import random
 import string
+import re
 from aiohttp import web
 from threading import Thread
 from sqlalchemy.orm import sessionmaker
@@ -206,7 +207,6 @@ class Methods:
         print(r.text)
 
 
-
 class Actions:
     dict_actions = {}
     # is_command = False
@@ -216,7 +216,8 @@ class Actions:
         self.dict_actions = {'!del': db.del_user,
                              '!add': db.add_user,
                              '!мем': Meme().save_meme,
-                             '!дата': InfinitySummer}
+                             '!дата': InfinitySummer,
+                             '!мну': Mnu}
         self.action = m.command.split(' ')
         self.action = self.action[0]
 
@@ -251,6 +252,8 @@ class PepakaCore:
         if m.sticker_set_name:
             s = Sticker(m)
             s.check_sticker()
+        if m.command.startswith('пепяк') and 'или' in m.command:
+            ToBeOrNoToBe(m)
 
 
     def service(message):
@@ -475,10 +478,7 @@ class Sticker:
         bd = DB(cfg)
         s = bd.session()
         q = s.query(Stickers).filter(Stickers.set_name == self.set_name).first()
-        if q:
-            print('est sticker')
-        else:
-            print('net stickera')
+        if not q:
             mtd = Methods()
             stickers = mtd.getStickerSet(self.set_name)
             stickers = stickers.json()
@@ -493,6 +493,35 @@ class Sticker:
             mtd.sendSticker(-1001437386963, self.id)
 
 
+class Mnu:
+    def __init__(self, m):
+        if m.command.startswith('/me'):
+            mnu_text = m.command[4:]
+        else:
+            mnu_text = m.command[5:]
+        mtd = Methods()
+        mtd.deleteMessage(m.chat_id, m.message_id)
+        mtd.sendMessage(m.chat_id, '<b>* ' + str(m.user_fullname) + '</b> ' + mnu_text)
+
+
+class ToBeOrNoToBe:
+    def __init__(self, m):
+        def del_trash(text):
+            return (re.sub('\W+','', text ))
+        word_list = m.text.split()
+        answer_list = []
+        temp = ''
+        for word in word_list:
+            if 'пепяк' not in word.lower() and word.lower() != 'или':
+                temp += del_trash(word) + ' '
+            elif temp != '':
+                answer_list.append(temp)
+                temp = ''
+        answer_list.append(temp)
+        answer = random.choice(answer_list)
+        mtd = Methods()
+        mtd.sendChatAction(m.chat_id, 'typing')
+        mtd.sendReply(m.chat_id, m.message_id, answer)
 
 
 db = DB(cfg)
