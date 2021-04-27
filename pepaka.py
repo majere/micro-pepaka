@@ -150,6 +150,7 @@ class Message:
             print('file_id =', self.file_id)
         if data.get('video'):
             self.file_id = data['video']['file_id']
+            print('file_id =', self.file_id)
 
 
 class Methods:
@@ -171,7 +172,6 @@ class Methods:
         data = {'chat_id': chat_id, 'parse_mode': 'HTML', 'text': text}
         r = requests.post(url, data=data)
         print('send message status:', r)
-        print(r.text)
 
     def sendReply(self, chat_id, message_id, text):
         url = self.url + '/sendMessage'
@@ -236,9 +236,12 @@ class Actions:
                              '!add': db.add_user,
                              '!мем': Meme().save_meme,
                              '!дата': InfinitySummer,
-                             '!мну': Mnu}
+                             '!мну': Mnu,
+                             '/help': Help,
+                             '/help@pepakabot': Help}
         self.action = m.command.split(' ')
         self.action = self.action[0]
+        print(self.action)
 
     def check_general_actions(self, m):
         if self.action in self.dict_actions:
@@ -263,7 +266,7 @@ class PepakaCore:
         m = Message(message)
         if m.command:
             a = Actions(m)
-            if m.command[0] == '!':
+            if m.command[0] == '!' or m.command[0] == '/':
                 if not a.check_general_actions(m):
                     if m.command.startswith('!d'):
                         Dice(m)
@@ -283,6 +286,21 @@ class PepakaCore:
     def service(message):
         print('service')
         print(message)
+
+
+class Help:
+    def __init__(self, m):
+        help_text = 'Чаво я умею:\r\n\r\n<b>!мну</b> - обозначить действие.\r\n\r\n' + \
+                        '<b>!d1-999</b> - бросить кубик с указанным количеством граней.\r\n\r\n' + \
+                        'Помогу с выбором, если ко мне обратиться по имени и перечислить варианты через "или".\r\n' + \
+                        'Например:\r\n<b>"Пепяка, есть или спать?</b>"\r\n\r\n' + \
+                        'Могу сохранить мемасик, если мне прислать фото, гифку или видео с подписью <b>"!мем !имя_мема"</b>\r\n\r\n' + \
+                        'Прочие команды:\r\n' + \
+                        '<b>!дата</b>\r\n\r\n' + \
+                        '@bazinga09'
+        mtd = Methods()
+        mtd.sendChatAction(m.chat_id, 'typing')
+        mtd.sendMessage(m.chat_id, help_text)
 
 
 class GoodMorning:
