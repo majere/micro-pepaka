@@ -10,7 +10,7 @@ import re
 from aiohttp import web
 from threading import Thread
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Boolean, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.engine.url import URL
 
@@ -145,6 +145,11 @@ class Message:
                 self.reply_user_fullname = data['reply_to_message']['from']['first_name'] + ' ' + data['reply_to_message']['from']['last_name']
             except KeyError:
                 self.reply_user_fullname = data['reply_to_message']['from']['first_name']
+        if data.get('animation'):
+            self.file_id = data['animation']['file_id']
+            print('file_id =', self.file_id)
+        if data.get('video'):
+            self.file_id = data['video']['file_id']
 
 
 class Methods:
@@ -180,9 +185,9 @@ class Methods:
         r = requests.post(url, data=data)
         print('delete message status:', r)
 
-    def getFile(self, id):
+    def getFile(self, file_id):
         url = self.url + '/getFile'
-        data = {'file_id': id}
+        data = {'file_id': file_id}
         r = requests.post(url, data=data)
         print('getFile = ', r.text)
         return r
@@ -204,6 +209,20 @@ class Methods:
         url = self.url + '/sendSticker'
         data = {'chat_id': chat_id, 'sticker': sticker}
         r = requests.post(url, data=data)
+        print(r.text)
+
+    def sendAnimation(self, chat_id, animation):
+        url = self.url + '/sendAnimation'
+        data = {'chat_id': chat_id}
+        files = {'animation': animation}
+        r = requests.post(url, data=data, files=files)
+        print(r.text)
+
+    def sendVideo(self, chat_id, video):
+        url = self.url + '/sendVideo'
+        data = {'chat_id': chat_id}
+        files = {'video': video}
+        r = requests.post(url, data=data, files=files)
         print(r.text)
 
 
@@ -242,23 +261,63 @@ class PepakaCore:
     def core(message):
         print('core')
         m = Message(message)
-        if m.text:
+        if m.command:
             a = Actions(m)
             if m.command[0] == '!':
                 if not a.check_general_actions(m):
-                    a.check_db_actions(m)
+                    if m.command.startswith('!d'):
+                        Dice(m)
+                    else:
+                        a.check_db_actions(m)
             else:
                 db.write_msg(m)
         if m.sticker_set_name:
             s = Sticker(m)
             s.check_sticker()
-        if m.command.startswith('пепяк') and 'или' in m.command:
+        if m.command and m.command.startswith('пепяк') and 'или' in m.command:
             ToBeOrNoToBe(m)
+        if m.command and 'утр' in m.command and 'котан' in m.command:
+            GoodMorning(m)
 
 
     def service(message):
         print('service')
         print(message)
+
+
+class GoodMorning:
+    def __init__(self, m):
+        print('Good Morning')
+        if random.randint(0, 1) == 0:
+            mtd = Methods()
+            mtd.sendChatAction(m.chat_id, 'typing')
+            mtd.sendMessage(m.chat_id, 'Мырк')
+
+
+
+class Dice:
+    def __init__(self, m):
+        mtd = Methods()
+        try:
+            num = int(m.command[2:])
+            if num > 0:
+                mtd.deleteMessage(m.chat_id, int(m.message_id))
+                rnd = random.randint(1, num)
+                print('random number is ' + str(rnd))
+                mtd.sendChatAction(m.chat_id, 'typing')
+                mtd.sendMessage(m.chat_id, '<b>' + m.user_fullname + '</b> выбросил <b>' + str(rnd) + ' из ' + m.command[2:] + '</b>.')
+
+                if rnd == 1:
+                    mtd.sendChatAction(m.chat_id, 'typing')
+                    mtd.sendMessage(m.chat_id, 'Ха-ха! Етить ты маубедитель!')
+
+            else:
+                mtd.sendChatAction(m.chat_id, 'typing')
+                mtd.sendMessage(m.chat_id, 'Кажется я проглотил твой кубик, <b>' + m.user_fullname + '</b>.')
+
+        except:
+            mtd.sendChatAction(m.chat_id, 'typing')
+            mtd.sendMessage(m.chat_id, '<b>' + m.user_fullname + '</b> зашвырнул кубик за грань реальности.')
 
 
 class Meme:
@@ -288,9 +347,15 @@ class Meme:
 
     @staticmethod
     def send_meme(m):
-        photo = open(m.file_path, 'rb')
+        print(m.file_path)
+        file = open(m.file_path, 'rb')
         mtd = Methods()
-        mtd.sendPhoto(m.chat_id, photo)
+        if m.file_path.startswith('photo'):
+            mtd.sendPhoto(m.chat_id, file)
+        elif m.file_path.startswith('animation'):
+            mtd.sendAnimation(m.chat_id, file)
+        elif m.file_path.startswith('video'):
+            mtd.sendVideo(m.chat_id, file)
 
 
 class Files:
@@ -539,7 +604,7 @@ class Memes(db.base):
     __tablename__ = 'memes'
     id = Column(Integer, primary_key=True)
     owner = Column('owner', Integer)
-    chat_id = Column('chat_id', Integer)
+    chat_id = Column('chat_id', BigInteger)
     command = Column('command', String)
     file = Column('file', String)
     func = Column('func', String)
